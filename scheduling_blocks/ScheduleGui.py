@@ -8,42 +8,64 @@ from PyQt5.QtWidgets import (
 from ortools.sat.python import cp_model
 
 
-# ================= BACKEND (your code reused) =================
+# ================= HELPER =================
+def time_to_seconds(tstr):
+    """Convert HH:MM:SS string to total seconds."""
+    h, m, s = map(int, tstr.split(":"))
+    return h * 3600 + m * 60 + s
+
+
+# ================= BACKEND =================
 def read_blocks(p):
-    with open(p, 'r', encoding='utf-8') as f:
-        next(f)
-        blocks = []
-        for r in csv.reader(f):
-            if len(r) >= 2 and r[0].strip():
-                inst_count = int(r[1].strip())
-                if inst_count <= 0:
-                    raise ValueError(f"Non-positive instance count for block {r[0]}")
-                blocks.append((r[0].strip(), inst_count))
-        if not blocks:
-            raise ValueError("No valid blocks found")
-        return blocks
+    try:
+        with open(p, 'r', encoding='utf-8') as f:
+            next(f)  # skip header
+            blocks = []
+            for r in csv.reader(f):
+                if len(r) >= 3 and r[0].strip():
+                    duration_sec = time_to_seconds(r[1].strip())
+                    inst_count = int(r[2].strip())
+                    if inst_count <= 0:
+                        raise ValueError(f"Non-positive instance count for block {r[0]}")
+                    workload = duration_sec * inst_count
+                    blocks.append((r[0].strip(), workload))
+            if not blocks:
+                raise ValueError("No valid blocks found")
+            return blocks
+    except FileNotFoundError:
+        print(f"Blocks file '{p}' not found")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error reading '{p}': {e}")
+        sys.exit(1)
 
 
 def assign_blocks(blocks, num_licenses):
     model = cp_model.CpModel()
     blocks = sorted(blocks, key=lambda x: x[1], reverse=True)
+
     block_vars = {}
     for b, _ in blocks:
         block_vars[b] = [model.NewBoolVar(f'{b}_L{i+1}') for i in range(num_licenses)]
         model.Add(sum(block_vars[b]) == 1)
+
     for idx, (b, _) in enumerate(blocks[:num_licenses]):
         model.Add(block_vars[b][idx] == 1)
+
     totals = []
     for i in range(num_licenses):
         total = sum(block_vars[b][i] * c for b, c in blocks)
         totals.append(total)
+
     makespan = model.NewIntVar(0, sum(c for _, c in blocks), 'makespan')
     model.AddMaxEquality(makespan, totals)
     model.Minimize(makespan)
+
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = 60.0
     solver.parameters.num_search_workers = 8
     status = solver.Solve(model)
+
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         schedule = []
         for b, _ in blocks:
@@ -145,7 +167,7 @@ class SchedulerApp(QWidget):
         for i, s in enumerate(schedule):
             self.table.setItem(i, 0, QTableWidgetItem(s['block']))
             self.table.setItem(i, 1, QTableWidgetItem(s['license']))
-        QMessageBox.information(self, "Done", f"Schedule created. Makespan: {makespan}")
+        QMessageBox.information(self, "Done", f"Schedule created.\nMakespan: {makespan} (workload units)")
 
     def export_schedule(self):
         if not self.schedule:
