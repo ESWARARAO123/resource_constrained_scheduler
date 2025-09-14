@@ -1,0 +1,12 @@
+Parameter,config1,config2
+area,556917.69,555384.419
+WNS,-0.733,-0.715
+TNS,-3278.2,-5740.4
+Total Power,1344.086875,1562.287106
+Placed Cells,444596,966047
+Unplaced Cells,0,0
+Overflow(H%),0.45,0
+Overflow(V%),0.82,0
+Max Hotspot,18.47,0
+Total Hotspot,259.3,0
+violations,119270,82072
